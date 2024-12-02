@@ -6,9 +6,18 @@ import ipaddress
 import datetime
 import concurrent.futures
 import signal
-from art import *
 from tqdm import tqdm
 import argparse
+
+art = r"""
+._____________                                __    ___.            __          .__  .__  .__  ________  ____ 
+|   \______   \ _______  _________    _______/  |_  \_ |__ ___.__. |  | __ ____ |  | |  | |  | \_____  \/_   |
+|   ||     ___/ \_  __ \/  _ \__  \  /  ___/\   __\  | __ <   |  | |  |/ // __ \|  | |  | |  |   _(__  < |   |
+|   ||    |      |  | \(  <_> ) __ \_\___ \  |  |    | \_\ \___  | |    <\  ___/|  |_|  |_|  |__/       \|   |
+|___||____|      |__|   \____(____  /____  > |__|    |___  / ____| |__|_ \\___  >____/____/____/______  /|___|
+                                  \/     \/              \/\/           \/    \/                      \/      
+    """
+
 
 def run_command(command):
     try:
@@ -244,6 +253,7 @@ def main(ip_ranges, level, mode, ports=None):
             print("Отчет не сохранен.")
             
 if __name__ == "__main__":
+    print(art)
     parser = argparse.ArgumentParser(description="IP roast by Kelll31")
     parser.add_argument('-u', '--url', required=True, help="IP или домен сканирования")
     parser.add_argument('-p', '--ports', help="Известные порты")
@@ -254,9 +264,6 @@ if __name__ == "__main__":
 
     command = f"clear"
     run_command(command)
-    tprint("IP Roast by kelll31",font="rnd-small")
-    randart()
-    print("---------------------------------")
 
     ip_ranges = args.url
     ports = args.ports
