@@ -59,6 +59,7 @@ def scan_ports(ip):
                 port = future_to_port[future]
                 if future.result():
                     open_ports.append(port)
+                    tqdm.write(f"Порт {port} открыт")
                 pbar.update(1)
 
     open_ports_str = ",".join(map(str, sorted(open_ports)))
