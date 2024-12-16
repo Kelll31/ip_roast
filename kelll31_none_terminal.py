@@ -54,11 +54,12 @@ def scan_ports(ip):
         future_to_port = {executor.submit(scan_port, ip, port): port for port in range(1, total_ports + 1)}
         
         # Используем tqdm для отображения прогресса
-        for future in tqdm(concurrent.futures.as_completed(future_to_port), total=total_ports, desc="Сканирование портов"):
-            port = future_to_port[future]
-            if future.result():
-                open_ports.append(port)
-                print(f"Порт {port} открыт")
+        with tqdm(total=total_ports, position=0, leave=True, desc="Сканирование портов") as pbar:
+            for future in concurrent.futures.as_completed(future_to_port):
+                port = future_to_port[future]
+                if future.result():
+                    open_ports.append(port)
+                pbar.update(1)
 
     open_ports_str = ",".join(map(str, sorted(open_ports)))
     print("---------------------------------")
