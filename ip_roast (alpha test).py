@@ -550,11 +550,8 @@ def main(ip_ranges, level, mode, is_udp=False, ports=None):
         print("Результаты Nmap:")
         print(nmap_result)
 
-        # Добавить парсинг результатов Nmap
         services = parse_nmap_results(nmap_result)
 
-        # Добавить новые проверки
-        # Добавить новые проверки
         additional_results = {}
 
         for service in services:
