@@ -134,9 +134,9 @@ def nmap_scan(ip, open_ports_str, level, mode):
 
     # Уровни сканирования
     commands = {
-        1: f"nmap -p{open_ports_str_clean} {scan_type} -sV -sC -T4 -Pn -oA {ip} {ip}",
-        2: f"nmap --script=exploit -p{open_ports_str_clean} {scan_type} -sV -sC -T4 -Pn -oA {ip} {ip}",
-        3: f"nmap --script=dos,exploit,fuzzer,vuln -p{open_ports_str_clean} {scan_type} -sV -sC -T4 -Pn -oA {ip} {ip}",
+        1: f"nmap -p{open_ports_str_clean} {scan_type} -sV --version-all -O -sC -T4 -Pn -oA {ip} {ip}",
+        2: f"nmap --script=exploit -p{open_ports_str_clean} {scan_type} -sV --version-all -O -sC -T4 -Pn -oA {ip} {ip}",
+        3: f"nmap --script=dos,exploit,fuzzer,vuln -p{open_ports_str_clean} {scan_type} -sV --version-all -O -sC -T4 -Pn -oA {ip} {ip}",
     }
 
     if level not in commands:
