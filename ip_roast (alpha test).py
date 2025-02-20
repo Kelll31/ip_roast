@@ -178,7 +178,14 @@ def searchsploit_scan(service_info):
     return result["stdout"] if result else None
 
 
-def save_report(ip, nmap_result, nikto_result, searchsploit_results, skipped=False):
+def save_report(
+    ip,
+    nmap_result,
+    nikto_result,
+    searchsploit_results,
+    additional_results=None,
+    skipped=False,
+):
     filename = f"{ip}.txt"
     with open(filename, "w") as file:
         if skipped:
@@ -210,6 +217,16 @@ def save_report(ip, nmap_result, nikto_result, searchsploit_results, skipped=Fal
                         file.write("empty\n")
             else:
                 file.write("\nРезультаты Searchsploit:\nempty\n")
+
+            # Проверка и запись дополнительных результатов (SSH и HTTP)
+            if additional_results:
+                file.write("\nДополнительные проверки:\n")
+                for check_name, result in additional_results.items():
+                    file.write(f"\n=== {check_name} ===\n")
+                    if result:
+                        file.write(str(result) + "\n")
+                    else:
+                        file.write("Результаты отсутствуют\n")
 
     print(f"Отчет сохранен в файл {filename}")
 
@@ -255,20 +272,184 @@ def parse_ip_ranges(ip_ranges):
     return ip_list
 
 
-def ssh_audit(ip, port=22):
-    """Запуск ssh-audit для SSH-серверов."""
+def ssh_audit(ip, port=22, output_file=None, check_vulnerabilities=False, verbose=True):
+    """
+    Запуск ssh-audit для SSH-серверов с расширенным функционалом.
+
+    :param ip: IP-адрес или доменное имя SSH-сервера.
+    :param port: Порт SSH-сервера (по умолчанию 22).
+    :param output_file: Имя файла для сохранения результатов (если None, результаты не сохраняются).
+    :param check_vulnerabilities: Если True, проверяет наличие известных уязвимостей.
+    :param verbose: Если True, выводит подробный отчет.
+    :return: Словарь с результатами аудита или None в случае ошибки.
+    """
     print(f"\n\033[0;31mЗапуск SSH аудита для {ip}:{port}...\033[0m")
+
+    # Базовая команда для ssh-audit
     command = f"ssh-audit {ip} -p {port}"
+
+    # Добавляем параметры для проверки уязвимостей
+    if check_vulnerabilities:
+        command += " -l warn"  # -l включает проверку известных уязвимостей
+
+    # Добавляем параметр для подробного вывода
+    if verbose:
+        command += " -v"  # -v включает подробный вывод
+
+    # Выполняем команду
     result = run_command(command)
-    return result["stdout"] if result else None
+
+    if not result:
+        print(f"Ошибка выполнения ssh-audit для {ip}:{port}.")
+        return None
+
+    # Сохраняем результаты в файл, если указан output_file
+    if output_file:
+        try:
+            with open(output_file, "w") as file:
+                file.write(result["stdout"])
+            print(f"Результаты аудита сохранены в файл {output_file}.")
+        except Exception as e:
+            print(f"Ошибка при сохранении результатов в файл: {e}")
+
+    # Анализируем вывод ssh-audit
+    audit_results = {
+        "warnings": [],
+        "errors": [],
+        "info": [],
+        "vulnerabilities": [],
+    }
+
+    # Парсим вывод ssh-audit
+    for line in result["stdout"].split("\n"):
+        if "WARNING" in line:
+            audit_results["warnings"].append(line.strip())
+        elif "ERROR" in line:
+            audit_results["errors"].append(line.strip())
+        elif "INFO" in line:
+            audit_results["info"].append(line.strip())
+        elif "VULNERABILITY" in line:
+            audit_results["vulnerabilities"].append(line.strip())
+
+    # Выводим результаты в консоль
+    if verbose:
+        print("\nРезультаты аудита:")
+        if audit_results["warnings"]:
+            print("\n\033[1;33mПредупреждения:\033[0m")
+            for warning in audit_results["warnings"]:
+                print(warning)
+        if audit_results["errors"]:
+            print("\n\033[1;31mОшибки:\033[0m")
+            for error in audit_results["errors"]:
+                print(error)
+        if audit_results["vulnerabilities"]:
+            print("\n\033[1;31mУязвимости:\033[0m")
+            for vulnerability in audit_results["vulnerabilities"]:
+                print(vulnerability)
+        if audit_results["info"]:
+            print("\n\033[1;34mИнформация:\033[0m")
+            for info in audit_results["info"]:
+                print(info)
+
+    return audit_results
 
 
-def check_http_headers(url):
-    """Проверка безопасности HTTP-заголовков."""
+def check_http_headers(url, output_file=None, verbose=True):
+    """
+    Проверка безопасности HTTP-заголовков с расширенным анализом.
+
+    :param url: URL для проверки (например, http://example.com:8080).
+    :param output_file: Имя файла для сохранения отчета в формате JSON.
+    :param verbose: Если True, выводит подробный отчет в консоль.
+    :return: Словарь с результатами проверки.
+    """
     print(f"\n\033[0;31mПроверка HTTP-заголовков для {url}...\033[0m")
-    command = f"curl -I {url}"
+
+    # Получение заголовков через curl
+    command = f"curl -I -s {url}"
     result = run_command(command)
-    return result["stdout"] if result else None
+
+    if not result or result["returncode"] != 0:
+        print(
+            f"Ошибка при получении заголовков: {result['stderr'] if result else 'Неизвестная ошибка'}"
+        )
+        return None
+
+    # Парсинг заголовков
+    headers = {}
+    security_checks = {
+        "hsts": {
+            "status": "⚠️ Отсутствует",
+            "recommendation": "Добавьте Strict-Transport-Security",
+        },
+        "csp": {
+            "status": "⚠️ Отсутствует",
+            "recommendation": "Добавьте Content-Security-Policy",
+        },
+        "x_content_type": {
+            "status": "⚠️ Отсутствует",
+            "recommendation": "Добавьте X-Content-Type-Options: nosniff",
+        },
+        "x_frame_options": {
+            "status": "⚠️ Отсутствует",
+            "recommendation": "Добавьте X-Frame-Options: DENY",
+        },
+    }
+
+    for line in result["stdout"].split("\n"):
+        if ":" in line:
+            key, value = line.split(":", 1)
+            headers[key.strip()] = value.strip()
+
+    # Проверка критических заголовков
+    if "Strict-Transport-Security" in headers:
+        security_checks["hsts"]["status"] = "✅ Найден"
+        security_checks["hsts"]["value"] = headers["Strict-Transport-Security"]
+
+    if "Content-Security-Policy" in headers:
+        security_checks["csp"]["status"] = "✅ Найден"
+        security_checks["csp"]["value"] = headers["Content-Security-Policy"]
+
+    if (
+        "X-Content-Type-Options" in headers
+        and "nosniff" in headers["X-Content-Type-Options"]
+    ):
+        security_checks["x_content_type"]["status"] = "✅ Настроен правильно"
+    elif "X-Content-Type-Options" in headers:
+        security_checks["x_content_type"]["status"] = "⚠️ Неверное значение"
+
+    if "X-Frame-Options" in headers and "DENY" in headers["X-Frame-Options"]:
+        security_checks["x_frame_options"]["status"] = "✅ Настроен правильно"
+    elif "X-Frame-Options" in headers:
+        security_checks["x_frame_options"]["status"] = "⚠️ Неверное значение"
+
+    # Формирование результата
+    report = {
+        "url": url,
+        "headers": headers,
+        "security_issues": security_checks,
+        "timestamp": datetime.datetime.now().isoformat(),
+    }
+
+    # Сохранение в файл
+    if output_file:
+        try:
+            with open(output_file, "w") as f:
+                json.dump(report, f, indent=4)
+            print(f"Отчет сохранен в {output_file}")
+        except Exception as e:
+            print(f"Ошибка сохранения: {e}")
+
+    # Вывод в консоль
+    if verbose:
+        print("\n\033[1;34m=== Результаты проверки ===\033[0m")
+        for check, data in security_checks.items():
+            print(f"\n\033[1;33m{check.upper()}:\033[0m {data['status']}")
+            if "value" in data:
+                print(f"Значение: {data['value']}")
+            print(f"Рекомендация: {data['recommendation']}")
+
+    return report
 
 
 def parse_nmap_results(nmap_output):
@@ -373,22 +554,32 @@ def main(ip_ranges, level, mode, is_udp=False, ports=None):
         services = parse_nmap_results(nmap_result)
 
         # Добавить новые проверки
+        # Добавить новые проверки
         additional_results = {}
 
         for service in services:
             # SSH проверка
             if service["service"].lower() == "ssh":
-                result = ssh_audit(ip, service["port"])
+                result = ssh_audit(
+                    ip, service["port"], verbose=True
+                )  # Включен подробный вывод
                 additional_results[f"SSH-Audit_{service['port']}"] = result
+                print("\n\033[1;35mРезультаты SSH аудита:\033[0m")
+                print(result)  # Вывод результатов в консоль
 
             # HTTP проверки
             if service["service"].lower() in ["http", "https"]:
                 protocol = "https" if service["service"] == "https" else "http"
                 url = f"{protocol}://{ip}:{service['port']}"
-                result = check_http_headers(url)
+                result = check_http_headers(
+                    url, verbose=True
+                )  # Включен подробный вывод
                 additional_results[f"HTTP-Headers_{service['port']}"] = result
+                print("\n\033[1;35mРезультаты проверки HTTP-заголовков:\033[0m")
+                print(result)  # Вывод результатов в консоль
 
         services = []
+
         nikto_result = None
         if level > 1:
             # Step 3: Run Nikto scan
