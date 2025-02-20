@@ -8,6 +8,7 @@ import concurrent.futures
 import signal
 from tqdm import tqdm
 import argparse
+import re
 
 art = r"""
 ._____________                                __    ___.            __          .__  .__  .__  ________  ____ 
@@ -47,45 +48,38 @@ def resolve_domain_to_ip(domain):
         return None
 
 
-def scan_port(ip, port, is_udp=False):
-    try:
-        sock_type = socket.SOCK_DGRAM if is_udp else socket.SOCK_STREAM
-        with socket.socket(socket.AF_INET, sock_type) as sock:
-            sock.settimeout(0.5)
-            if is_udp:
-                sock.sendto(b"", (ip, port))
-                data, _ = sock.recvfrom(1024)
-                return True
-            else:
-                result = sock.connect_ex((ip, port))
-                return result == 0
-    except Exception:
-        return False
+def parse_ports(port_input):
+    """Парсинг входных данных для портов и валидация"""
+    if not port_input:
+        return None
 
+    # Удаляем пробелы и разбиваем элементы
+    cleaned = re.sub(r"\s+", "", port_input)
+    ports = []
 
-def scan_ports(ip, ports_to_scan=None, is_udp=False):
-    open_ports = []
-    ports = ports_to_scan if ports_to_scan else range(1, 65536)
+    # Обрабатываем диапазоны и списки
+    for part in cleaned.split(","):
+        if "-" in part:
+            start_end = part.split("-")
+            if len(start_end) != 2 or not all(p.isdigit() for p in start_end):
+                raise ValueError(f"Некорректный диапазон портов: {part}")
 
-    with concurrent.futures.ThreadPoolExecutor(max_workers=100) as executor:
-        future_to_port = {
-            executor.submit(scan_port, ip, port, is_udp): port for port in ports
-        }
+            start, end = map(int, start_end)
+            if not (1 <= start <= 65535) or not (1 <= end <= 65535):
+                raise ValueError(f"Порты вне диапазона 1-65535: {part}")
+            if start > end:
+                raise ValueError(f"Неверный диапазон: {start} > {end}")
 
-        with tqdm(
-            total=len(ports),
-            position=0,
-            leave=True,
-            desc=f"Сканирование {'UDP' if is_udp else 'TCP'} портов",
-        ) as pbar:
-            for future in concurrent.futures.as_completed(future_to_port):
-                port = future_to_port[future]
-                if future.result():
-                    open_ports.append(port)
-                    tqdm.write(f"Порт {port}/{'udp' if is_udp else 'tcp'} открыт")
-                pbar.update(1)
+            ports.append(f"{start}-{end}")
+        else:
+            if not part.isdigit():
+                raise ValueError(f"Некорректный номер порта: {part}")
+            port = int(part)
+            if not (1 <= port <= 65535):
+                raise ValueError(f"Порт вне диапазона 1-65535: {port}")
+            ports.append(str(port))
 
-    return ",".join(map(str, sorted(open_ports)))
+    return ",".join(ports)
 
 
 def is_nmap_installed():
@@ -100,6 +94,28 @@ def is_nmap_installed():
         return True
     except (subprocess.CalledProcessError, FileNotFoundError):
         return False
+
+
+def nmap_scan_ports(ip, is_udp=False, ports=None):
+    """Сканирует указанные порты или все порты, если ports=None"""
+    scan_type = "-sU" if is_udp else "-sS"
+    port_param = f"-p{ports}" if ports else "-p-"
+    command = f"nmap {scan_type} {port_param} --open -T4 {ip}"
+
+    result = run_command(command)
+    if not result or result["returncode"] != 0:
+        print(
+            f"Ошибка сканирования портов: {result['stderr'] if result else 'Неизвестная ошибка'}"
+        )
+        return None
+
+    open_ports = []
+    for line in result["stdout"].split("\n"):
+        if "/tcp" in line or "/udp" in line:
+            port = line.split("/")[0]
+            open_ports.append(port)
+
+    return ",".join(open_ports)
 
 
 def nmap_scan(ip, open_ports_str, level, mode):
@@ -141,8 +157,7 @@ def nmap_scan(ip, open_ports_str, level, mode):
         print(result["stderr"])
         return None
 
-    result = run_command(command)
-    return result["stdout"] if result else None
+    return result["stdout"]
 
 
 def nikto_scan(ip, open_ports_str):
@@ -195,26 +210,8 @@ def save_report(ip, nmap_result, nikto_result, searchsploit_results, skipped=Fal
                         file.write("empty\n")
             else:
                 file.write("\nРезультаты Searchsploit:\nempty\n")
-            if additional_results:
-                file.write("\nДополнительные проверки:\n")
-                for check_name, result in additional_results.items():
-                    file.write(f"\n=== {check_name} ===\n")
-                    file.write(result if result else "Результаты отсутствуют\n")
 
     print(f"Отчет сохранен в файл {filename}")
-
-
-def parse_ports(port_input):
-    ports = []
-    if not port_input:
-        return ports
-    for part in port_input.split(","):
-        if "-" in part:
-            start, end = map(int, part.split("-"))
-            ports.extend(range(start, end + 1))
-        else:
-            ports.append(int(part))
-    return ports
 
 
 def parse_ip_ranges(ip_ranges):
@@ -293,12 +290,6 @@ def parse_nmap_results(nmap_output):
     return services
 
 
-def gobuster_scan(ip, port):
-    print(f"Запуск Gobuster на {ip}:{port}...")
-    command = f"gnome-terminal -- bash -c 'gobuster dir -u http://{ip}:{port} -w /usr/share/wordlists/dirb/directory-list-2.3-medium.txt -t 32; exec bash'"
-    subprocess.Popen(command, shell=True)
-
-
 def handle_exit(signal, frame):
     print("\nВы хотите:")
     print("1. Продолжить")
@@ -321,7 +312,7 @@ def handle_exit(signal, frame):
         print("Неверный выбор. Продолжаем...")
 
 
-def main(ip_ranges, level, mode, ports=None):
+def main(ip_ranges, level, mode, is_udp=False, ports=None):
     if not is_nmap_installed():
         print(
             """
@@ -333,6 +324,11 @@ def main(ip_ranges, level, mode, ports=None):
             - Для Windows: https://nmap.org/download.html#windows
             """
         )
+        sys.exit(1)
+    try:
+        parsed_ports = parse_ports(ports) if ports else None
+    except ValueError as e:
+        print(f"\033[1;31mОШИБКА: {e}\033[0m")
         sys.exit(1)
     signal.signal(signal.SIGINT, handle_exit)
     ip_list = parse_ip_ranges(ip_ranges)
@@ -347,14 +343,16 @@ def main(ip_ranges, level, mode, ports=None):
         global skip_test
         skip_test = False
 
-        # Step 1: Scan ports using Python script or use provided ports
-        ports_list = parse_ports(ports) if ports else None
-        open_ports_str = scan_ports(ip, ports_list, args.udp)
-        if args.udp:
-            open_ports_str += "U"
-        if not open_ports_str:
-            print("Не удалось найти открытые порты.")
-            continue
+        # Step 1: Scan ports using Nmap
+        open_ports_str = None
+        if parsed_ports:
+            print(f"Используются указанные порты: {parsed_ports}")
+            open_ports_str = parsed_ports
+        else:
+            open_ports_str = nmap_scan_ports(ip, is_udp)
+            if not open_ports_str:
+                print("Не удалось найти открытые порты.")
+                continue
 
         if skip_test:
             save_report(ip, None, None, None, skipped=True)
@@ -420,7 +418,9 @@ def main(ip_ranges, level, mode, ports=None):
         # Ask user if they want to save the report
         save_choice = input("Хотите сохранить отчет? (Y/n): ").strip().lower()
         if save_choice == "y":
-            save_report(ip, nmap_result, nikto_result, searchsploit_results, additional_results)
+            save_report(
+                ip, nmap_result, nikto_result, searchsploit_results, additional_results
+            )
         else:
             print("Отчет не сохранен.")
 
@@ -428,7 +428,7 @@ def main(ip_ranges, level, mode, ports=None):
 if __name__ == "__main__":
     print(art)
     parser = argparse.ArgumentParser(description="IP roast by Kelll31")
-    parser.add_argument("-u", "--url", required=True, help="IP или домен сканирования")
+    parser.add_argument("url", help="IP или домен сканирования")
     parser.add_argument(
         "-l",
         "--level",
@@ -446,7 +446,11 @@ if __name__ == "__main__":
         help="Режим сканирования: 1 (Агрессивный), 2 (Скрытый)",
     )
     parser.add_argument(
-        "-p", "--ports", help="Порты или диапазоны (например: 80,443,1000-2000)"
+        "-p",
+        "--ports",
+        type=str,
+        default=None,
+        help="Ограничить сканирование портами (форматы: 80; 80,443; 1-1000)",
     )
     parser.add_argument("--udp", action="store_true", help="Сканировать UDP-порты")
     args = parser.parse_args()
@@ -455,8 +459,8 @@ if __name__ == "__main__":
     run_command(command)
 
     ip_ranges = args.url
-    ports = args.ports
     scan_level = args.level
     mode = "Агрессивный" if args.mode == 1 else "Скрытый"
+    is_udp = args.udp
 
-    main(ip_ranges, scan_level, mode, ports)
+    main(ip_ranges, scan_level, mode, is_udp, args.ports)
