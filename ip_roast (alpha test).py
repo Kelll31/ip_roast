@@ -9,6 +9,9 @@ import signal
 from tqdm import tqdm
 import argparse
 import re
+import json
+import os
+import shlex
 
 art = r"""
 ._____________                                __    ___.            __          .__  .__  .__  ________  ____ 
@@ -160,6 +163,111 @@ def nmap_scan(ip, open_ports_str, level, mode):
     return result["stdout"]
 
 
+def check_ssl(ip, port=443):
+    """Проверка SSL/TLS настроек с помощью testssl.sh"""
+    print(f"\n\033[0;31mЗапуск SSL аудита для {ip}:{port}...\033[0m")
+    cmd = f"testssl.sh --ip one --parallel --color 0 {ip}:{port}"
+    result = run_command(cmd)
+    return result["stdout"] if result else None
+
+
+def check_database_services(ip, services):
+    """Проверка уязвимых конфигураций СУБД"""
+    results = {}
+    for service in services:
+        if service["service"] == "mysql" and service["port"] == "3306":
+            cmd = f"nmap --script mysql-audit -p 3306 {ip}"
+            results["MySQL"] = run_command(cmd)["stdout"]
+        elif service["service"] == "postgresql" and service["port"] == "5432":
+            cmd = f"nmap --script pgsql-brute -p 5432 {ip}"
+            results["PostgreSQL"] = run_command(cmd)["stdout"]
+    return results
+
+
+def web_directory_scan(url):
+    """Поиск открытых веб-директорий"""
+    print(f"\n\033[0;31mСканирование директорий для {url}...\033[0m")
+    cmd = f"dirsearch -u {url} -t 50 -x 404 -R 15 -r"
+    return run_command(cmd)["stdout"]
+
+
+def check_snmp(ip):
+    """Проверка SNMP на публичный доступ"""
+    print(f"\n\033[0;31mПроверка SNMP для {ip}...\033[0m")
+    cmd = f"snmp-check {ip} -c public"
+    return run_command(cmd)["stdout"]
+
+
+def check_cve(ip, service_info):
+    """Проверка CVE через NSE"""
+    print(f"\n\033[0;31mПоиск CVE для {service_info}...\033[0m")
+    cmd = f"nmap --script vulners -sV {ip}"
+    return run_command(cmd)["stdout"]
+
+
+def check_smb(ip, port):
+    """Проверка уязвимостей SMB"""
+    print(f"\n\033[0;31mАудит SMB ({ip}:{port})...\033[0m")
+
+    results = {}
+
+    # Базовые проверки через smbclient
+    cmd = f"smbclient -L //{ip} -N -p {port}"
+    results["anonymous_access"] = run_command(cmd)["stdout"]
+
+    # Проверка EternalBlue и других CVE через Nmap
+    cmd = f"nmap -p {port} --script smb-vuln-* {ip}"
+    results["nmap_vuln_scan"] = run_command(cmd)["stdout"]
+
+    # Проверка подписей SMB
+    cmd = f"nmap -p {port} --script smb-security-mode {ip}"
+    results["smb_signing"] = run_command(cmd)["stdout"]
+
+    return results
+
+
+def check_smtp(ip, port):
+    """Анализ SMTP-сервера"""
+    print(f"\n\033[0;31mПроверка SMTP ({ip}:{port})...\033[0m")
+
+    results = {}
+
+    # Проверка открытого релея
+    cmd = f"nmap -p {port} --script smtp-open-relay {ip}"
+    results["open_relay"] = run_command(cmd)["stdout"]
+
+    # Перебор пользователей
+    cmd = f"smtp-user-enum -M VRFY -U /usr/share/wordlists/metasploit/unix_users.txt -t {ip}"
+    results["user_enum"] = run_command(cmd)["stdout"]
+
+    return results
+
+
+def check_rdp(ip, port):
+    """Проверка безопасности RDP"""
+    print(f"\n\033[0;31mАудит RDP ({ip}:{port})...\033[0m")
+
+    results = {}
+
+    # Проверка BlueKeep
+    cmd = f"nmap -p {port} --script rdp-vuln-ms12-020 {ip}"
+    results["bluekeep_check"] = run_command(cmd)["stdout"]
+
+    # Проверка NLA (Network Level Authentication)
+    cmd = f"ncrack --user Administrator -P rockyou.txt rdp://{ip}"
+    results["nla_crack"] = run_command(cmd)["stdout"]
+
+    return results
+
+
+def check_ldap(ip, port):
+    """Проверка анонимного доступа к LDAP"""
+    print(f"\n\033[0;31mПроверка LDAP ({ip}:{port})...\033[0m")
+
+    cmd = f"ldapsearch -x -h {ip} -p {port} -b '' -s base"
+    return run_command(cmd)["stdout"]
+
+
 def nikto_scan(ip, open_ports_str):
     print("---------------------------------")
     print(f"Запуск сканера \033[0;31mNikto\033[0m на {ip}...")
@@ -185,6 +293,8 @@ def save_report(
     searchsploit_results,
     additional_results=None,
     skipped=False,
+    ssl_audit=None,
+    cve_results=None,
 ):
     filename = f"{ip}.txt"
     with open(filename, "w") as file:
@@ -217,6 +327,13 @@ def save_report(
                         file.write("empty\n")
             else:
                 file.write("\nРезультаты Searchsploit:\nempty\n")
+            if ssl_audit:
+                file.write("\nРезультаты SSL аудита:\n")
+                file.write(ssl_audit + "\n")
+
+            if cve_results:
+                file.write("\nРезультаты проверки CVE:\n")
+                file.write(cve_results + "\n")
 
             # Проверка и запись дополнительных результатов (SSH и HTTP)
             if additional_results:
@@ -227,6 +344,9 @@ def save_report(
                         file.write(str(result) + "\n")
                     else:
                         file.write("Результаты отсутствуют\n")
+                if "SMB" in additional_results:
+                    file.write("\n=== SMB Checks ===\n")
+                    file.write(json.dumps(additional_results.get("SMB", {}), indent=2))
 
     print(f"Отчет сохранен в файл {filename}")
 
@@ -523,6 +643,8 @@ def main(ip_ranges, level, mode, is_udp=False, ports=None):
 
         global skip_test
         skip_test = False
+        ssl_audit = None
+        cve_results = None
 
         # Step 1: Scan ports using Nmap
         open_ports_str = None
@@ -574,6 +696,42 @@ def main(ip_ranges, level, mode, is_udp=False, ports=None):
                 additional_results[f"HTTP-Headers_{service['port']}"] = result
                 print("\n\033[1;35mРезультаты проверки HTTP-заголовков:\033[0m")
                 print(result)  # Вывод результатов в консоль
+            if service["service"] == "https":
+                ssl_audit = check_ssl(ip, service["port"])
+            if services:
+                cve_results = check_cve(ip, services[0])
+            port = service["port"]
+            proto = service["service"].lower()
+            # SMB проверка
+            if proto == "microsoft-ds" and port in ["139", "445"]:
+                additional_results[f"SMB_{port}"] = check_smb(ip, port)
+
+            # SMTP проверка
+            if proto == "smtp" and port in ["25", "587"]:
+                additional_results[f"SMTP_{port}"] = check_smtp(ip, port)
+
+            # RDP проверка
+            if proto == "ms-wbt-server" and port == "3389":
+                additional_results[f"RDP_{port}"] = check_rdp(ip, port)
+
+            # LDAP проверка
+            if proto == "ldap" and port == "389":
+                additional_results[f"LDAP_{port}"] = check_ldap(ip, port)
+
+        web_dirs = {}
+        for service in services:
+            if service["service"] in ["http", "https"]:
+                url = (
+                    f"http://{ip}:{service['port']}"
+                    if service["service"] == "http"
+                    else f"https://{ip}:{service['port']}"
+                )
+                web_dirs[url] = web_directory_scan(url)
+
+        db_audit = check_database_services(ip, services)
+
+        # SNMP проверка
+        snmp_result = check_snmp(ip)
 
         services = []
 
@@ -607,7 +765,19 @@ def main(ip_ranges, level, mode, is_udp=False, ports=None):
         save_choice = input("Хотите сохранить отчет? (Y/n): ").strip().lower()
         if save_choice == "y":
             save_report(
-                ip, nmap_result, nikto_result, searchsploit_results, additional_results
+                ip,
+                nmap_result,
+                nikto_result,
+                searchsploit_results,
+                additional_results,
+                ssl_audit=ssl_audit,
+                cve_results=cve_results,
+                additional_results={
+                    **additional_results,
+                    "Web directories": web_dirs,
+                    "Database checks": db_audit,
+                    "SNMP check": snmp_result,
+                },
             )
         else:
             print("Отчет не сохранен.")
