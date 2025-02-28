@@ -44,6 +44,8 @@ def main():
         )
         exit(1)
 
+    from core.utils import resolve_domain
+
     parser = argparse.ArgumentParser(description="IP roast by Kelll31")
     parser.add_argument("target", help="Target IP or domain")
     parser.add_argument(
@@ -68,6 +70,18 @@ def main():
     )
     args = parser.parse_args()
 
+    # Резолвим домен в IP
+    target_ip = resolve_domain(args.target)
+    if not target_ip:
+        print(f"\033[1;31mНе удалось разрешить домен: {args.target}\033[0m")
+        exit(1)
+
+    scanner = NetworkScanner(
+        target_ip,  # Используем IP вместо домена
+        level=args.level,
+        is_udp=args.udp,
+        ports=args.ports,
+    )
     scanner = NetworkScanner(
         args.target, level=args.level, is_udp=args.udp, ports=args.ports
     )

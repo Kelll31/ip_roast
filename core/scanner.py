@@ -1,5 +1,5 @@
 import re
-from .utils import run_command, parse_ports
+from core.utils import run_command, parse_ports
 
 
 class NetworkScanner:
@@ -9,6 +9,8 @@ class NetworkScanner:
         self.is_udp = is_udp
         self.ports = ports
         self.nmap_output = ""
+
+    from services import network_checks, security_checks
 
     def full_scan(self):
         """Единое сканирование с детализацией сервисов"""
@@ -38,9 +40,40 @@ class NetworkScanner:
             )
             return {}
 
-        self.nmap_output = result["stdout"]
-        print(f"\n\033[1;32mРезультаты сканирования:\033[0m\n{self.nmap_output}")
-        return self._parse_nmap_xml(result["stdout"])
+        services = self._parse_nmap_xml(result["stdout"])
+        self._run_additional_checks(services)
+        return services
+
+    def _run_additional_checks(self, services):
+        """Запуск модулей проверки на основе найденных сервисов"""
+        for service in services.values():
+            port = service["port"]
+            proto = service["protocol"]
+
+            # HTTP/HTTPS
+            if service["service"] in ["http", "https", "http-proxy"]:
+                url = f"{service['service']}://{self.target}:{port}"
+                self.report.additional_results = self.security_checks.check_http_headers(url)
+                if proto == "https" or port == "443":
+                    self.report.ssl_audit = self.security_checks.check_ssl(self.target, port)
+
+            # SMB
+            if service["service"] in ["microsoft-ds", "netbios-ssn"]:
+                self.report.additional_results["SMB"] = network_checks.check_smb(
+                    self.target, port
+                )
+
+            # FTP
+            if service["service"] == "ftp":
+                self.report.additional_results["FTP"] = network_checks.check_ftp(
+                    self.target, port
+                )
+
+            # SMTP
+            if service["service"] == "smtp":
+                self.report.additional_results["SMTP"] = network_checks.check_smtp(
+                    self.target, port
+                )
 
     def _parse_nmap_xml(self, xml_output):
         """Альтернативный парсинг через XML"""

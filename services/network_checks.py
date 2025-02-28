@@ -1,4 +1,4 @@
-from ..utils import run_command
+from core.utils import run_command
 
 
 def check_smb(ip, port):

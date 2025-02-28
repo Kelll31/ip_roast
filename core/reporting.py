@@ -12,7 +12,7 @@ class ReportGenerator:
         self.searchsploit_results = None
         self.ssl_audit = None
         self.cve_results = None
-        self.additional_results = None
+        self.additional_results = {}
 
     def add_section(self, name, data):
         self.report_data[name] = data
@@ -39,5 +39,9 @@ class ReportGenerator:
             if self.searchsploit_results:
                 file.write("\n\n=== Результаты Searchsploit ===\n")
                 file.write(json.dumps(self.searchsploit_results, indent=2))
+            if self.additional_results:
+                file.write("\n\n=== Результаты дополнительных проверок ===\n")
+                for check, result in self.additional_results.items():
+                    file.write(f"\n=== {check} ===\n{result}")
 
         print(f"\n\033[1;32mОтчет сохранен:\033[0m {filename}")

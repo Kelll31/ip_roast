@@ -1,6 +1,6 @@
 import datetime
 import json
-from ..utils import run_command
+from core.utils import run_command
 
 
 def check_ssl(ip, port=443):

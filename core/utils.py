@@ -31,10 +31,14 @@ def run_command(command):
 
 def resolve_domain(domain):
     try:
-        ip = socket.gethostbyname(domain)
-        return ip
+        if ipaddress.ip_address(domain):
+            return domain  # Если это уже IP
+    except ValueError:
+        pass
+
+    try:
+        return socket.gethostbyname(domain)
     except socket.gaierror:
-        print(f"Не удалось разрешить домен {domain}")
         return None
 
 
