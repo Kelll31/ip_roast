@@ -42,14 +42,7 @@ pip install -r requirements.txt
 ```bash
 python ip_roast 192.168.1.1 -l 2
 ```
-Расширенные параметры
-```bash
-python -m ip_roast example.com \
-  --level 3 \          # Максимальная агрессивность
-  --ports "80,443,1-1000" \
-  --udp \              # Сканирование UDP портов
-  -o report.txt        # Сохранить отчет
-```
+
 Ключевые аргументы
 Параметр	Описание
 ```bash
