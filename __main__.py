@@ -10,6 +10,7 @@ art = r"""
 |   ||    |      |  | \(  <_> ) __ \_\___ \  |  |    | \_\ \___  | |    <\  ___/|  |_|  |_|  |__/       \|   |
 |___||____|      |__|   \____(____  /____  > |__|    |___  / ____| |__|_ \\___  >____/____/____/______  /|___|
                                   \/     \/              \/\/           \/    \/                      \/      
+                                  Version: alpha test
     """
 
 
@@ -77,16 +78,10 @@ def main():
         exit(1)
 
     scanner = NetworkScanner(
-        target_ip,  # Используем IP вместо домена
-        level=args.level,
-        is_udp=args.udp,
-        ports=args.ports,
+        target_ip, level=args.level, is_udp=args.udp, ports=args.ports
     )
-    scanner = NetworkScanner(
-        args.target, level=args.level, is_udp=args.udp, ports=args.ports
-    )
-
     report = ReportGenerator(args.target)
+    scanner.report = report
 
     # Единый вызов сканирования
     scan_results = scanner.full_scan()

@@ -13,6 +13,7 @@ class ReportGenerator:
         self.ssl_audit = None
         self.cve_results = None
         self.additional_results = {}
+        self.searchsploit_results = []
 
     def add_section(self, name, data):
         self.report_data[name] = data
@@ -26,6 +27,11 @@ class ReportGenerator:
             file.write(
                 f"Сгенерирован: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
             )
+            file.write("\n=== Обнаруженные порты ===\n")
+            for port, data in self.report_data.items():
+                file.write(
+                    f"{port} ({data['state']}): {data['service']} {data['version']}\n"
+                )
             file.write("\n=== Полный вывод Nmap ===\n")
             file.write(
                 self.nmap_result if self.nmap_result else "Nmap не вернул результатов"
@@ -38,10 +44,20 @@ class ReportGenerator:
 
             if self.searchsploit_results:
                 file.write("\n\n=== Результаты Searchsploit ===\n")
-                file.write(json.dumps(self.searchsploit_results, indent=2))
+                for item in self.searchsploit_results:
+                    file.write(
+                        f"\nСервис: {item['service']} (порт {item['port']})\n"
+                        f"{item['exploits']}\n"
+                        f"{'-'*50}\n"
+                    )
             if self.additional_results:
                 file.write("\n\n=== Результаты дополнительных проверок ===\n")
                 for check, result in self.additional_results.items():
                     file.write(f"\n=== {check} ===\n{result}")
+            if self.searchsploit_results:
+                file.write("\n\n=== Результаты Searchsploit ===\n")
+                for item in self.searchsploit_results:
+                    file.write(f"\nСервис: {item['service']} {item['version']}\n")
+                    file.write(f"{item['exploits']}\n{'='*30}\n")
 
         print(f"\n\033[1;32mОтчет сохранен:\033[0m {filename}")

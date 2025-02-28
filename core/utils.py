@@ -72,5 +72,6 @@ def parse_ports(port_input):
             if not (1 <= port <= 65535):
                 raise ValueError(f"Порт вне диапазона 1-65535: {port}")
             ports.append(str(port))
-
+    if any(port in ["80", "443"] for port in ports):
+        print("Обнаружены веб-порты, активируем дополнительные проверки...")
     return ",".join(ports)
