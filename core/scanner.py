@@ -28,10 +28,9 @@ class NetworkScanner:
         self.nmap_output = result["stdout"]
 
         services = self._parse_nmap_output()
+        self._run_searchsploit(services)
         self._run_additional_checks(services)
-        self._run_searchsploit(services)
         print(self.nmap_output)
-        self._run_searchsploit(services)
         return services
 
     def _parse_nmap_output(self):
@@ -110,7 +109,8 @@ class NetworkScanner:
             # Сохраняем в отчет
             self.report.searchsploit_results.append(
                 {
-                    "service": f"{service_name} {version}",
+                    "service": service_name,
+                    "version": version,  # Явно добавляем версию
                     "port": port,
                     "exploits": output,
                 }

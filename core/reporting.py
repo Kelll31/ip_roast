@@ -46,8 +46,10 @@ class ReportGenerator:
                 file.write("\n\n=== Результаты Searchsploit ===\n")
                 for item in self.searchsploit_results:
                     file.write(
-                        f"\nСервис: {item['service']} (порт {item['port']})\n"
-                        f"{item['exploits']}\n"
+                        f"\nСервис: {item.get('service', 'N/A')} "  # Используем .get() для безопасного доступа
+                        f"(версия: {item.get('version', 'не определена')}, "
+                        f"порт: {item.get('port', 'N/A')})\n"
+                        f"{item.get('exploits', 'Нет данных')}\n"
                         f"{'-'*50}\n"
                     )
             if self.additional_results:
