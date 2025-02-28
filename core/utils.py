@@ -3,22 +3,29 @@ import socket
 import ipaddress
 import re
 
+
 def run_command(command):
     try:
         result = subprocess.run(
             command,
             shell=True,
+            executable="/bin/bash",
             capture_output=True,
             text=True,
-            check=False,  # Не генерировать исключение при ненулевом коде
+            encoding="utf-8",
+            errors="replace",
+            timeout=3600,  # Таймаут 1 час для длительных сканирований
         )
         return {
             "stdout": result.stdout,
             "stderr": result.stderr,
             "returncode": result.returncode,
         }
+    except subprocess.TimeoutExpired:
+        print(f"\033[1;33mТаймаут команды: {command}\033[0m")
+        return {"stdout": "", "stderr": "Timeout", "returncode": 124}
     except Exception as e:
-        print(f"Ошибка выполнения команды {command}: {e}")
+        print(f"\033[1;31mКритическая ошибка выполнения {command}: {str(e)}\033[0m")
         return None
 
 

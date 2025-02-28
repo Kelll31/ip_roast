@@ -47,32 +47,40 @@ def main():
     parser = argparse.ArgumentParser(description="IP roast by Kelll31")
     parser.add_argument("target", help="Target IP or domain")
     parser.add_argument(
-        "-l", "--level", type=int, choices=[1, 2, 3], default=1, help="Scan level"
+        "-l",
+        "--level",
+        type=int,
+        choices=[1, 2, 3],
+        default=1,
+        help="Уровень агрессивности (1-базовый, 3-полный)",
     )
     parser.add_argument(
         "-p",
         "--ports",
         type=str,
         default=None,
-        help="Ограничить сканирование портами (форматы: 80; 80,443; 1-1000)",
+        help="Специфичные порты (форматы: 80; 80,443; 1-1000)",
     )
-    parser.add_argument("--udp", action="store_true", help="Enable UDP scanning")
+    parser.add_argument(
+        "--udp",
+        action="store_true",
+        help="Сканировать UDP порты (автоматически включает -sU)",
+    )
     args = parser.parse_args()
 
-    scanner = NetworkScanner(args.target, level=args.level, is_udp=args.udp, ports=args.ports)
+    scanner = NetworkScanner(
+        args.target, level=args.level, is_udp=args.udp, ports=args.ports
+    )
+
     report = ReportGenerator(args.target)
 
-    skipped = False  # Объявляем переменную skipped
+    # Единый вызов сканирования
+    scan_results = scanner.full_scan()
 
-    scanner.port_scan()
-    results = scanner.service_scan()
-
-    # Передаем данные в отчет
-    report.skipped = skipped
-    report.nmap_result = scanner.nmap_output  # Пример передачи данных
-
-    for service, data in results.items():
-        report.add_section(service, data)
+    # Передача данных в отчёт
+    report.nmap_result = scanner.nmap_output
+    for port, data in scan_results.items():
+        report.add_section(f"{data['protocol']}/{port}", data)
 
     report.save_report()
 

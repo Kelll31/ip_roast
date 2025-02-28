@@ -1,8 +1,5 @@
-import ipaddress
-import socket
 import re
 from .utils import run_command, parse_ports
-
 
 class NetworkScanner:
     def __init__(self, target, level=1, is_udp=False, ports=None):
@@ -10,80 +7,66 @@ class NetworkScanner:
         self.level = level
         self.is_udp = is_udp
         self.ports = ports
-        self.open_ports = []
         self.nmap_output = ""
 
-    def _parse_target(self):
-        """Аналог parse_ip_ranges из старой версии"""
-        ip_list = []
-        try:
-            # Попытка обработки как CIDR/диапазона
-            for ip in ipaddress.IPv4Network(self.target, strict=False):
-                ip_list.append(str(ip))
-            return ip_list
-        except:
-            pass
-
-        try:
-            # Обработка домена
-            ip = socket.gethostbyname(self.target)
-            return [ip]
-        except:
-            pass
-
-        return [self.target]
-
-    def port_scan(self):
-        """Быстрое сканирование открытых портов"""
-        ips = self._parse_target()
-        for ip in ips:
-            self._scan_single_ip(ip)
-
-    def _scan_single_ip(self, ip):
-        """Первичное сканирование портов (этап 1)"""
+    def full_scan(self):
+        """Единое сканирование с детализацией сервисов"""
         scan_type = "-sU" if self.is_udp else "-sS"
         port_param = f"-p{parse_ports(self.ports)}" if self.ports else "-p-"
-        command = f"nmap {scan_type} {port_param} --open -T4 {ip}"
+        
+        command = (
+            f"nmap {scan_type} {port_param} "
+            f"-sV -O -sC -T4 -Pn --script "
+        )
 
+        # Добавляем скрипты в зависимости от уровня
+        if self.level == 1:
+            command += "default"
+        elif self.level == 2:
+            command += "exploit,vuln"
+        else:
+            command += "dos,exploit,fuzzer,vuln,broadcast"
+
+        command += f" {self.target}"
+        
+        print(f"\n\033[1;34mВыполняется сканирование:\033[0m {command}")
         result = run_command(command)
-
-        # Парсинг открытых портов из вывода
-        if result and result.get("stdout"):
-            self.open_ports = []
-            for line in result["stdout"].split("\n"):
-                if "/tcp" in line or "/udp" in line:
-                    port = line.split("/")[0]
-                    self.open_ports.append(port)
-
-    def service_scan(self):
-        """Детальное сканирование сервисов (этап 2)"""
-        if not self.open_ports:
+        
+        if not result or result["returncode"] != 0:
+            print(f"\033[1;31mОшибка Nmap:\n{result['stderr'] if result else 'Неизвестная ошибка'}\033[0m")
             return {}
 
-        # Формируем список портов для сканирования
-        ports_str = ",".join(self.open_ports)
-
-        commands = {
-            1: f"nmap -p{ports_str} -sV -O -sC -T4 -Pn {self.target}",
-            2: f"nmap --script=exploit -p{ports_str} -sV -O -sC -T4 -Pn {self.target}",
-            3: f"nmap --script=dos,exploit,fuzzer,vuln -p{ports_str} -sV -O -sC -T4 -Pn {self.target}",
-        }
-
-        command = commands[self.level]
-        result = run_command(command)
-        print(command)
         self.nmap_output = result["stdout"]
+        print(f"\n\033[1;32mРезультаты сканирования:\033[0m\n{self.nmap_output}")
+        
+        return self._parse_nmap_output()
 
-        # Парсинг результатов
+    def _parse_nmap_output(self):
+        """Парсинг полного вывода Nmap"""
         services = {}
-        for line in self.nmap_output.split("\n"):
-            if "/tcp" in line or "/udp" in line:
-                parts = line.split()
-                if len(parts) >= 3:
-                    port_proto = parts[0].split("/")
-                    service = parts[2]
-                    services[service] = {
-                        "port": port_proto[0],
-                        "protocol": port_proto[1],
-                    }
+        current_service = {}
+        
+        for line in self.nmap_output.split('\n'):
+            # Обнаружение портов
+            if re.match(r'^\d+/(tcp|udp)', line):
+                parts = re.split(r'\s{2,}', line.strip())
+                port_info = parts[0].split('/')
+                
+                service = {
+                    'port': port_info[0],
+                    'protocol': port_info[1],
+                    'state': parts[1],
+                    'service': parts[2],
+                    'version': parts[3] if len(parts) > 3 else ''
+                }
+                services[port_info[0]] = service
+                
+            # Парсинг дополнительной информации
+            elif 'Service detection performed' in line:
+                break
+            elif line.startswith('|'):
+                key_val = line.split(':', 1)
+                if len(key_val) == 2:
+                    current_service[key_val[0].strip('|_ ')] = key_val[1].strip()
+        
         return services
