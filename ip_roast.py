@@ -474,6 +474,38 @@ def ssh_audit(ip, port=22, output_file=None, check_vulnerabilities=False, verbos
     return audit_results
 
 
+def check_ftp(ip, port):
+    """Проверка анонимного доступа и уязвимостей FTP"""
+    print(f"\n\033[0;31mАудит FTP ({ip}:{port})...\033[0m")
+    results = {}
+
+    # Проверка анонимного входа
+    cmd = f"ftp -n {ip} {port} <<<'user anonymous'"
+    results["anonymous_login"] = run_command(cmd)["stdout"]
+
+    # Поиск CVE через NSE
+    cmd = f"nmap -p {port} --script ftp-vuln* {ip}"
+    results["nmap_scan"] = run_command(cmd)["stdout"]
+
+    return results
+
+
+def check_cloud_config(ip):
+    """Проверка облачных конфигураций"""
+    print(f"\n\033[0;31mПроверка облачных сервисов ({ip})...\033[0m")
+    results = {}
+
+    # Проверка S3 бакетов
+    cmd = f"aws s3 ls --endpoint-url http://{ip}"
+    results["s3_buckets"] = run_command(cmd)["stdout"]
+
+    # Проверка Kubernetes API
+    cmd = f"kubectl --insecure-skip-tls-verify get pods --all-namespaces"
+    results["k8s_api"] = run_command(cmd)["stdout"]
+
+    return results
+
+
 def check_http_headers(url, output_file=None, verbose=True):
     """
     Проверка безопасности HTTP-заголовков с расширенным анализом.
@@ -717,6 +749,14 @@ def main(ip_ranges, level, mode, is_udp=False, ports=None):
             # LDAP проверка
             if proto == "ldap" and port == "389":
                 additional_results[f"LDAP_{port}"] = check_ldap(ip, port)
+
+            # FTP проверка
+            if proto == "ftp" and port in ["21", "2121"]:
+                additional_results[f"FTP_{port}"] = check_ftp(ip, port)
+
+            # Облачные сервисы
+            if service["service"] in ["amazon-s3", "kubernetes"]:
+                additional_results[f"CLOUD_{port}"] = check_cloud_config(ip)
 
         web_dirs = {}
         for service in services:
