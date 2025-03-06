@@ -96,16 +96,20 @@ class NetworkScanner:
             port = service["port"]
             state = service["state"]
 
+            version_clean = version.split("(")[0].strip() if version else ""
+            if not version_clean:
+                continue  # Пропускаем пустые версии
+
             # Пропускаем закрытые порты и сервисы без версии
-            if state != "open" or not version:
+            if state != "open" or not version_clean:
                 continue
 
             print(
-                f"\n\033[1;33m[+] Проверка {service_name}, версии - {version} (порт {port})...\033[0m"
+                f"\n\033[1;33m[+] Проверка {service_name}, версии - {version_clean} (порт {port})...\033[0m"
             )
 
             # Формируем команду
-            cmd = f"searchsploit {version} --disable-colour"
+            cmd = f"searchsploit {version_clean} --disable-colour"
             if self.verbose:
                 print(f"\033[1;34m[VERBOSE] Выполняем команду:\033[0m {cmd}")
 
@@ -123,7 +127,7 @@ class NetworkScanner:
             self.report.searchsploit_results.append(
                 {
                     "service": service_name,
-                    "version": version,  # Явно добавляем версию
+                    "version": version_clean,  # Явно добавляем версию
                     "port": port,
                     "exploits": output,
                 }
