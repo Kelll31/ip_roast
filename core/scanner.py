@@ -10,13 +10,14 @@ from services import (
 
 
 class NetworkScanner:
-    def __init__(self, target, level=1, is_udp=False, ports=None):
+    def __init__(self, target, level=1, is_udp=False, ports=None, verbose=False):
         self.target = target
         self.level = level
         self.is_udp = is_udp
         self.ports = ports
         self.nmap_output = ""
-        self.report = None  # Добавляем атрибут для отчета
+        self.report = None
+        self.verbose = verbose
 
     def full_scan(self):
         scan_type = "-sU" if self.is_udp else "-sS"
@@ -29,6 +30,9 @@ class NetworkScanner:
             f"-Pn -T4 -O --osscan-guess "  # Агрессивное определение ОС
             f"--script=banner,vuln {self.target}"
         )
+
+        if self.verbose:
+            print(f"\033[1;34m[VERBOSE] Выполняем команду:\033[0m {command}")
 
         result = run_command(command)
         self.nmap_output = result["stdout"]
@@ -97,11 +101,14 @@ class NetworkScanner:
                 continue
 
             print(
-                f"\n\033[1;33m[+] Проверка {service_name} {version} (порт {port})...\033[0m"
+                f"\n\033[1;33m[+] Проверка {service_name}, версии - {version} (порт {port})...\033[0m"
             )
 
             # Формируем команду
-            cmd = f"searchsploit {version} --disable-colors"
+            cmd = f"searchsploit {version} --disable-colour"
+            if self.verbose:
+                print(f"\033[1;34m[VERBOSE] Выполняем команду:\033[0m {cmd}")
+
             result = run_command(cmd)
 
             # Обрабатываем результат
@@ -125,10 +132,14 @@ class NetworkScanner:
     def _run_web_scans(self, url):
         # Nikto
         cmd = f"nikto -h {self.target} -p 80,443"
+        if self.verbose:
+            print(f"\033[1;34m[VERBOSE] Выполняем команду:\033[0m {cmd}")
         self.report.nikto_result = run_command(cmd)["stdout"]
         # Searchsploit
         for service in self.services.values():
             cmd = f"searchsploit {service['service']} {service['version']}"
+            if self.verbose:
+                print(f"\033[1;34m[VERBOSE] Выполняем команду:\033[0m {cmd}")
             self.report.searchsploit_results.append(run_command(cmd)["stdout"])
 
     def _run_additional_checks(self, services):
@@ -151,6 +162,10 @@ class NetworkScanner:
                 )
                 if proto == "https" or port == "443":
                     self.report.ssl_audit = security_checks.check_ssl(self.target, port)
+
+            #   self.report.additional_results["Web Directories"] = (
+            #      directory_scanner.web_directory_scan(url)
+            # )
 
             # SMB
             if service["service"] in ["microsoft-ds", "netbios-ssn"]:
@@ -179,9 +194,6 @@ class NetworkScanner:
                 self.target
             )
             # Web directories
-            self.report.additional_results["Web Directories"] = (
-                directory_scanner.web_directory_scan(url)
-            )
             # Database checks
             self.report.additional_results["Database"] = (
                 database_checks.check_database_services(self.target, services)

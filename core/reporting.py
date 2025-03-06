@@ -3,10 +3,10 @@ from datetime import datetime
 
 
 class ReportGenerator:
-    def __init__(self, target):
+    def __init__(self, target, verbose=False):
         self.target = target
         self.report_data = {}
-        self.skipped = False  # Добавляем атрибут skipped
+        self.skipped = False
         self.nmap_result = None
         self.nikto_result = None
         self.searchsploit_results = None
@@ -14,11 +14,15 @@ class ReportGenerator:
         self.cve_results = None
         self.additional_results = {}
         self.searchsploit_results = []
+        self.verbose = verbose
 
     def add_section(self, name, data):
         self.report_data[name] = data
 
     def save_report(self):
+        if self.verbose:
+            print("\033[1;34m[VERBOSE] Генерация отчета...\033[0m")
+            
         filename = (
             f"{self.target}_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
         )
@@ -27,11 +31,15 @@ class ReportGenerator:
             file.write(
                 f"Сгенерирован: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
             )
+            if self.verbose:
+                print("\033[1;34m[VERBOSE] Записываю порты...\033[0m")
             file.write("\n=== Обнаруженные порты ===\n")
             for port, data in self.report_data.items():
                 file.write(
                     f"{port} ({data['state']}): {data['service']} {data['version']}\n"
                 )
+            if self.verbose:
+                print("\033[1;34m[VERBOSE] Записываю вывод nmap...\033[0m")
             file.write("\n=== Полный вывод Nmap ===\n")
             file.write(
                 self.nmap_result if self.nmap_result else "Nmap не вернул результатов"
@@ -39,10 +47,14 @@ class ReportGenerator:
 
             # Дополнительные разделы
             if self.nikto_result:
+                if self.verbose:
+                    print("\033[1;34m[VERBOSE] Записываю результаты Nikto...\033[0m")
                 file.write("\n\n=== Результаты Nikto ===\n")
                 file.write(self.nikto_result)
 
             if self.searchsploit_results:
+                if self.verbose:
+                    print("\033[1;34m[VERBOSE] Записываю Результаты Searchsploit...\033[0m")
                 file.write("\n\n=== Результаты Searchsploit ===\n")
                 for item in self.searchsploit_results:
                     file.write(

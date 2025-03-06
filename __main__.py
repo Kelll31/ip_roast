@@ -50,14 +50,6 @@ def main():
     parser = argparse.ArgumentParser(description="IP roast by Kelll31")
     parser.add_argument("target", help="Target IP or domain")
     parser.add_argument(
-        "-l",
-        "--level",
-        type=int,
-        choices=[1, 2, 3],
-        default=1,
-        help="Уровень агрессивности (1-базовый, 3-полный)",
-    )
-    parser.add_argument(
         "-p",
         "--ports",
         type=str,
@@ -65,12 +57,24 @@ def main():
         help="Специфичные порты (форматы: 80; 80,443; 1-1000)",
     )
     parser.add_argument(
-        "--udp",
-        action="store_true",
-        help="Сканировать UDP порты (автоматически включает -sU)",
+        "-v", "--verbose", action="store_true", help="Подробный вывод работы программы"
+    )
+    # Устаревшие функции
+    parser.add_argument(
+        "-l",
+        "--level",
+        type=int,
+        choices=[1, 2, 3],
+        default=1,
+        help="Уровень агрессивности (1-базовый, 3-полный) (УСТАРЕЛА)",
     )
     parser.add_argument(
-        "-m", "--mode", type=int, choices=[1, 2], help="Режим сканирования"
+        "--udp",
+        action="store_true",
+        help="Сканировать UDP порты (автоматически включает -sU)(УСТАРЕЛА)",
+    )
+    parser.add_argument(
+        "-m", "--mode", type=int, choices=[1, 2], help="Режим сканирования (УСТАРЕЛА)"
     )
     args = parser.parse_args()
 
@@ -81,9 +85,13 @@ def main():
         exit(1)
 
     scanner = NetworkScanner(
-        target_ip, level=args.level, is_udp=args.udp, ports=args.ports
+        target_ip,
+        level=args.level,
+        is_udp=args.udp,
+        ports=args.ports,
+        verbose=args.verbose,
     )
-    report = ReportGenerator(args.target)
+    report = ReportGenerator(args.target, verbose=args.verbose)
     scanner.report = report
 
     # Единый вызов сканирования

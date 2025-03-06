@@ -4,8 +4,10 @@ import ipaddress
 import re
 
 
-def run_command(command):
+def run_command(command, verbose=False):
     try:
+        if verbose:
+            print(f"\033[1;34m[VERBOSE] Выполнение: {command}\033[0m")
         result = subprocess.run(
             command,
             shell=True,
@@ -16,6 +18,8 @@ def run_command(command):
             errors="replace",
             timeout=3600,  # Таймаут 1 час для длительных сканирований
         )
+        if verbose and result.stdout:
+            print(f"\033[1;34m[VERBOSE] Вывод команды:\n{result.stdout}\033[0m")
         return {
             "stdout": result.stdout,
             "stderr": result.stderr,
