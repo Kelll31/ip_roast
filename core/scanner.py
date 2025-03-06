@@ -101,7 +101,7 @@ class NetworkScanner:
             )
 
             # Формируем команду
-            cmd = f"searchsploit {service_name} {version} --disable-colors"
+            cmd = f"searchsploit {version} --disable-colors"
             result = run_command(cmd)
 
             # Обрабатываем результат
