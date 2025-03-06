@@ -61,5 +61,10 @@ class ReportGenerator:
                 for item in self.searchsploit_results:
                     file.write(f"\nСервис: {item['service']} {item['version']}\n")
                     file.write(f"{item['exploits']}\n{'='*30}\n")
-
+            if self.cve_results:
+                file.write("\n=== CVE Результаты ===\n")
+                file.write(self.cve_results)
+            if self.nikto_result:
+                file.write("\n=== Nikto Результаты ===\n")
+                file.write(self.nikto_result)
         print(f"\n\033[1;32mОтчет сохранен:\033[0m {filename}")

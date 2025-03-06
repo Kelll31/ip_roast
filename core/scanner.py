@@ -1,6 +1,12 @@
 import re
 from core.utils import run_command, parse_ports
-from services import network_checks, security_checks
+from services import (
+    network_checks,
+    security_checks,
+    database_checks,
+    vulnerability_checks,
+    directory_scanner,
+)
 
 
 class NetworkScanner:
@@ -116,8 +122,23 @@ class NetworkScanner:
                 }
             )
 
+    def _run_web_scans(self, url):
+        # Nikto
+        cmd = f"nikto -h {self.target} -p 80,443"
+        self.report.nikto_result = run_command(cmd)["stdout"]
+        # Searchsploit
+        for service in self.services.values():
+            cmd = f"searchsploit {service['service']} {service['version']}"
+            self.report.searchsploit_results.append(run_command(cmd)["stdout"])
+
     def _run_additional_checks(self, services):
         """Запуск модулей проверки на основе найденных сервисов"""
+        if (
+            not hasattr(self.report, "additional_results")
+            or self.report.additional_results is None
+        ):
+            self.report.additional_results = {}
+
         for service in services.values():
             port = service["port"]
             proto = service["protocol"]
@@ -125,7 +146,9 @@ class NetworkScanner:
             # HTTP/HTTPS
             if service["service"] in ["http", "https", "http-proxy"]:
                 url = f"{service['service']}://{self.target}:{port}"
-                self.report.additional_results = security_checks.check_http_headers(url)
+                self.report.additional_results.update(
+                    security_checks.check_http_headers(url) or {}
+                )
                 if proto == "https" or port == "443":
                     self.report.ssl_audit = security_checks.check_ssl(self.target, port)
 
@@ -146,3 +169,20 @@ class NetworkScanner:
                 self.report.additional_results["SMTP"] = network_checks.check_smtp(
                     self.target, port
                 )
+
+            # CVE
+            self.report.cve_results = vulnerability_checks.check_cve(
+                self.target, services
+            )
+            # SNMP
+            self.report.additional_results["SNMP"] = vulnerability_checks.check_snmp(
+                self.target
+            )
+            # Web directories
+            self.report.additional_results["Web Directories"] = (
+                directory_scanner.web_directory_scan(url)
+            )
+            # Database checks
+            self.report.additional_results["Database"] = (
+                database_checks.check_database_services(self.target, services)
+            )

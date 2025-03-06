@@ -69,6 +69,9 @@ def main():
         action="store_true",
         help="Сканировать UDP порты (автоматически включает -sU)",
     )
+    parser.add_argument(
+        "-m", "--mode", type=int, choices=[1, 2], help="Режим сканирования"
+    )
     args = parser.parse_args()
 
     # Резолвим домен в IP
