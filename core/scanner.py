@@ -1,5 +1,7 @@
 import re
-from core.utils import run_command, parse_ports
+import importlib
+from pathlib import Path
+from core.utils import run_command, parse_ports, SecurityCheck
 from services import (
     network_checks,
     security_checks,
@@ -18,6 +20,7 @@ class NetworkScanner:
         self.nmap_output = ""
         self.report = None
         self.verbose = verbose
+        self.available_checks = self._discover_checks()
 
     def full_scan(self):
         scan_type = "-sU" if self.is_udp else "-sS"
@@ -83,6 +86,28 @@ class NetworkScanner:
                     "version": version.strip(),
                 }
         return services
+
+    def _discover_checks(self):
+        checks = []
+        checks_dir = Path("services")
+
+        for file in checks_dir.glob("*.py"):
+            module = importlib.import_module(f"services.{file.stem}")
+            for attr in dir(module):
+                cls = getattr(module, attr)
+                try:
+                    if issubclass(cls, SecurityCheck) and cls != SecurityCheck:
+                        checks.append(cls)
+                except TypeError:
+                    continue
+        return checks
+
+    def _run_auto_checks(self, scan_results):
+        for check_class in self.available_checks:
+            check = check_class(self.target, self.verbose)
+            if check.is_applicable(scan_results):
+                result = check.run()
+                self.report.add_check_result(check_class.name, result)
 
     def _run_searchsploit(self, services):
         if not self.report:

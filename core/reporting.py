@@ -16,13 +16,18 @@ class ReportGenerator:
         self.searchsploit_results = []
         self.verbose = verbose
 
+    def add_check_result(self, check_name, result):
+        if "security_checks" not in self.report_data:
+            self.report_data["security_checks"] = {}
+        self.report_data["security_checks"][check_name] = result
+
     def add_section(self, name, data):
         self.report_data[name] = data
 
     def save_report(self):
         if self.verbose:
             print("\033[1;34m[VERBOSE] Генерация отчета...\033[0m")
-            
+
         filename = (
             f"{self.target}_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
         )
@@ -54,7 +59,9 @@ class ReportGenerator:
 
             if self.searchsploit_results:
                 if self.verbose:
-                    print("\033[1;34m[VERBOSE] Записываю Результаты Searchsploit...\033[0m")
+                    print(
+                        "\033[1;34m[VERBOSE] Записываю Результаты Searchsploit...\033[0m"
+                    )
                 file.write("\n\n=== Результаты Searchsploit ===\n")
                 for item in self.searchsploit_results:
                     file.write(

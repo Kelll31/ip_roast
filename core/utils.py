@@ -79,3 +79,44 @@ def parse_ports(port_input):
     if any(port in ["80", "443"] for port in ports):
         print("Обнаружены веб-порты, активируем дополнительные проверки...")
     return ",".join(ports)
+
+
+class SecurityCheck:
+    # Обязательные параметры
+    name = "Unnamed Check"
+    description = "No description"
+    required_ports = []  # Пример: [80, 443]
+    required_services = []  # Пример: ["http", "ssh"]
+    required_protocols = []  # Пример: ["tcp"]
+    target_os = []  # Пример: ["Linux", "Windows"]
+
+    def __init__(self, target_ip, verbose=False):
+        self.target = target_ip
+        self.verbose = verbose
+
+    def is_applicable(self, scan_results):
+        """Определяет условия для активации проверки"""
+        # scan_results - результаты сканирования NetworkScanner
+        # Пример реализации:
+        for service in scan_results.values():
+            if service["port"] in self.required_ports:
+                return True
+        return False
+
+    def run(self):
+        """Основная логика проверки"""
+        raise NotImplementedError("Check must implement run() method")
+
+    @classmethod
+    def get_check_info(cls):
+        """Возвращает метаданные проверки"""
+        return {
+            "name": cls.name,
+            "description": cls.description,
+            "requirements": {
+                "ports": cls.required_ports,
+                "services": cls.required_services,
+                "protocols": cls.required_protocols,
+                "os": cls.target_os,
+            },
+        }
