@@ -28,6 +28,17 @@ def is_nmap_installed():
         return False
 
 
+def ask_save_report():
+    """Запрашивает подтверждение на сохранение отчета"""
+    while True:
+        answer = input("\n\033[1;33mСохранить отчет? (да/нет): \033[0m").strip().lower()
+        if answer in ("да", "д", "yes", "y"):
+            return True
+        if answer in ("нет", "н", "no", "n"):
+            return False
+        print("\033[1;31mПожалуйста, введите 'да' или 'нет'\033[0m")
+
+
 def main():
     print(art)
 
@@ -102,7 +113,11 @@ def main():
     for port, data in scan_results.items():
         report.add_section(f"{data['protocol']}/{port}", data)
 
-    report.save_report()
+    # Запрос на сохранение
+    if ask_save_report():
+        report.save_report()
+    else:
+        print("\033[1;33mОтчет не сохранен\033[0m")
 
 
 if __name__ == "__main__":
